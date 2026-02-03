@@ -7,26 +7,27 @@
 </head>
 
 <body>
+  <p>press keys to play notes and spawn bouncy balls!</p>
+
+  <label for="waveform">Waveform:</label>
+  <select id="waveform">
+    <option value="sine">Sine</option>
+    <option value="square">Square</option>
+    <option value="sawtooth">Sawtooth</option>
+    <option value="triangle">Triangle</option>
+  </select>
+
+  <canvas id="canvas" width="1000" height="500"></canvas>
+
+  <style>
+    canvas {
+      border: 1px solid #000000;
+      display: block;
+      margin-top: 10px;
+    }
+  </style>
+
+  <script src="script.js"></script>
 </body>
-
-<label for="waveform">Waveform:</label>
-<select id="waveform">
-  <option value="sine">Sine</option>
-  <option value="square">Square</option>
-  <option value="sawtooth">Sawtooth</option>
-  <option value="triangle">Triangle</option>
-</select>
-
-<canvas id="canvas" width="1000" height="500"></canvas>
-
-<style>
-  canvas {
-    border: 1px solid #000000;
-    display: block;
-    margin-top: 10px;
-  }
-</style>
-
-<script src="script.js"></script>
 
 </html>
