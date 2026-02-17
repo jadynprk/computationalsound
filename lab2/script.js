@@ -44,6 +44,42 @@ document.addEventListener("DOMContentLoaded", function(event) {
         
     }
 
+    const params = {
+        // Global
+        attack: 0.02,
+        decay: 0.1,
+        sustain: 0.7,
+        release: 0.3,
+        masterVolume: 0.8,
+
+        // Additive
+        partials: 5,
+
+        // AM
+        amFrequency: 100,
+        amDepth: 0.8,
+
+        // FM
+        fmFrequency: 100,
+        fmIndex: 200
+    };
+
+    function bindSlider(id, paramName) {
+        const slider = document.getElementById(id);
+        slider.addEventListener("input", e => {
+            params[paramName] = parseFloat(e.target.value);
+        });
+    }
+
+    bindSlider("attack", "attack");
+    bindSlider("decay", "decay");
+    bindSlider("sustain", "sustain");
+    bindSlider("release", "release");
+
+    bindSlider("fmFrequency", "fmFrequency");
+    bindSlider("fmIndex", "fmIndex");
+
+
     window.addEventListener('keydown', keyDown, false);
     window.addEventListener('keyup', keyUp, false);
 
@@ -65,7 +101,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
 
             // Release phase
             const now = audioCtx.currentTime;
-            const releaseTime = 0.3;
+            const releaseTime = params.release;
             
             // smooth fade out
             gain.gain.cancelScheduledValues(now);
@@ -94,14 +130,35 @@ document.addEventListener("DOMContentLoaded", function(event) {
         }
     }
 
+    function createEnvelope() {
+        const now = audioCtx.currentTime;
+
+        const envelope = audioCtx.createGain();
+
+        envelope.gain.setValueAtTime(0.0001, now);
+
+        // Attack
+        envelope.gain.exponentialRampToValueAtTime(
+            1,
+            now + params.attack
+        );
+
+        // Decay
+        envelope.gain.exponentialRampToValueAtTime(
+            params.sustain,
+            now + params.attack + params.decay
+        );
+
+        envelope.connect(globalGain);
+
+        return envelope;
+    }
+
     function playAdditive(key) {
         const now = audioCtx.currentTime;
         const baseFreq = keyboardFrequencyMap[key];
 
-        const envelope = audioCtx.createGain();
-        envelope.gain.setValueAtTime(0.0001, now);
-        envelope.gain.exponentialRampToValueAtTime(1, now + 0.02);
-        envelope.connect(globalGain);
+        const envelope = createEnvelope();
 
         // hardcoded partials
         const partials = [
@@ -139,10 +196,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
         const now = audioCtx.currentTime;
         const baseFreq = keyboardFrequencyMap[key];
 
-        const envelope = audioCtx.createGain();
-        envelope.gain.setValueAtTime(0.0001, now);
-        envelope.gain.exponentialRampToValueAtTime(1, now + 0.02);
-        envelope.connect(globalGain);
+        const envelope = createEnvelope();
 
         // hardcoded partials
         const partials = [
@@ -189,10 +243,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
         const now = audioCtx.currentTime;
         const baseFreq = keyboardFrequencyMap[key];
 
-        const envelope = audioCtx.createGain();
-        envelope.gain.setValueAtTime(0.0001, now);
-        envelope.gain.exponentialRampToValueAtTime(1, now + 0.02);
-        envelope.connect(globalGain);
+        const envelope = createEnvelope();
 
         const carrier = audioCtx.createOscillator();
         carrier.frequency.setValueAtTime(baseFreq, now);
@@ -227,10 +278,35 @@ document.addEventListener("DOMContentLoaded", function(event) {
         const now = audioCtx.currentTime;
         const baseFreq = keyboardFrequencyMap[key];
 
-        // todo
+        const envelope = createEnvelope();
 
-        return;
+        const carrier = audioCtx.createOscillator();
+        carrier.frequency.setValueAtTime(baseFreq, now);
+        carrier.type = waveformSelect.value;
+
+        const modulator = audioCtx.createOscillator();
+        modulator.frequency.setValueAtTime(params.fmFrequency, now);
+        modulator.type = "sine";
+
+        const modulationIndex = audioCtx.createGain();
+        modulationIndex.gain.setValueAtTime(params.fmIndex, now); 
+
+        modulator.connect(modulationIndex);
+        modulationIndex.connect(carrier.frequency);
+        carrier.connect(envelope);
+
+        carrier.start();
+        modulator.start();
+
+        activeOscillators[key] = {
+            oscillators: [carrier, modulator],
+            gain: envelope
+        };
+
+        doPolyphonyGain();
     }
+
+
 
     function doPolyphonyGain() {
         const count = Object.keys(activeOscillators).length;
