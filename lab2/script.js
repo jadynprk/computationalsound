@@ -2,9 +2,10 @@ document.addEventListener("DOMContentLoaded", function(event) {
 
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const globalGain = audioCtx.createGain(); //this will control the volume of all notes
-    globalGain.gain.setValueAtTime(0.8, audioCtx.currentTime)
+    globalGain.gain.setValueAtTime(0.6, audioCtx.currentTime)
     globalGain.connect(audioCtx.destination);
     const waveformSelect = document.getElementById("waveform");
+    const synthModeSelect = document.getElementById("synthMode");
     const MAX_MASTER_GAIN = 0.7;
 
     const canvas = document.getElementById("canvas");
@@ -39,12 +40,14 @@ document.addEventListener("DOMContentLoaded", function(event) {
         '89': 880.000000000000000,  //Y - A
         '55': 932.327523036179832, //7 - A#
         '85': 987.766602512248223,  //U - B
+        '73': 1046.5022612023945,   //I - C
+        
     }
 
     window.addEventListener('keydown', keyDown, false);
     window.addEventListener('keyup', keyUp, false);
 
-    activeOscillators = {}
+    let activeOscillators = {}
 
     function keyDown(event) {
         const key = (event.detail || event.which).toString();
@@ -94,18 +97,18 @@ document.addEventListener("DOMContentLoaded", function(event) {
         const baseFreq = keyboardFrequencyMap[key];
 
         const numKeys = Object.keys(activeOscillators).length + 1;
-        const targetGain = MAX_MASTER_GAIN / numKeys;
+        //const targetGain = MAX_MASTER_GAIN / numKeys;
 
         const envelope = audioCtx.createGain();
         envelope.gain.setValueAtTime(0.0001, now);
-        envelope.gain.exponentialRampToValueAtTime(MAX_MASTER_GAIN, now + 0.02);
+        envelope.gain.exponentialRampToValueAtTime(1, now + 0.02);
         envelope.connect(globalGain);
 
         // hardcoded partials
         const partials = [
-            { ratio: 1, amp: 0.6 },
-            { ratio: 2, amp: 0.25 },
-            { ratio: 3, amp: 0.15 }
+            { ratio: 1, amp: 0.5 },
+            { ratio: 2, amp: 0.2 },
+            { ratio: 3, amp: 0.1 }
         ];
 
         const oscillators = [];
@@ -115,6 +118,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
             const gain = audioCtx.createGain();
             
             osc.frequency.setValueAtTime(baseFreq * partial.ratio, now);
+            osc.type = waveformSelect.value;
             gain.gain.setValueAtTime(partial.amp, now);
             
             osc.connect(gain);
