@@ -96,9 +96,6 @@ document.addEventListener("DOMContentLoaded", function(event) {
         const now = audioCtx.currentTime;
         const baseFreq = keyboardFrequencyMap[key];
 
-        const numKeys = Object.keys(activeOscillators).length + 1;
-        //const targetGain = MAX_MASTER_GAIN / numKeys;
-
         const envelope = audioCtx.createGain();
         envelope.gain.setValueAtTime(0.0001, now);
         envelope.gain.exponentialRampToValueAtTime(1, now + 0.02);
@@ -134,6 +131,53 @@ document.addEventListener("DOMContentLoaded", function(event) {
         };
 
         doPolyphonyGain();
+    }
+
+    function playAM(key) {
+        const now = audioCtx.currentTime;
+        const baseFreq = keyboardFrequencyMap[key];
+
+        const envelope = audioCtx.createGain();
+        envelope.gain.setValueAtTime(0.0001, now);
+        envelope.gain.exponentialRampToValueAtTime(1, now + 0.02);
+        envelope.connect(globalGain);
+
+        const carrier = audioCtx.createOscillator();
+        carrier.frequency.setValueAtTime(baseFreq, now);
+        carrier.type = waveformSelect.value;
+
+        const modulator = audioCtx.createOscillator();
+        modulator.frequency.setValueAtTime(100, now);
+        modulator.type = "sine";
+
+        const depth = audioCtx.createGain();
+        depth.gain.setValueAtTime(0.8, now);
+
+        const modulated = audioCtx.createGain();
+        modulated.gain.setValueAtTime(1 - depth.gain.value, now);
+
+        modulator.connect(depth).connect(modulated.gain);
+        carrier.connect(modulated);
+        modulated.connect(envelope);
+        
+        carrier.start();
+        modulator.start();
+
+        activeOscillators[key] = {
+            oscillators: [carrier, modulator],
+            gain: envelope
+        };
+
+        doPolyphonyGain();
+    }
+
+    function playFM(key) {
+        const now = audioCtx.currentTime;
+        const baseFreq = keyboardFrequencyMap[key];
+
+        // todo
+
+        return;
     }
 
     function doPolyphonyGain() {
