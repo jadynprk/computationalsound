@@ -85,6 +85,8 @@ document.addEventListener("DOMContentLoaded", function(event) {
 
         if (mode === "additive") {
             playAdditive(key);
+        } else if (mode === "lfo") {
+            playLFO(key);
         } else if (mode === "am") {
             playAM(key);
         } else if (mode === "fm") {
@@ -129,6 +131,56 @@ document.addEventListener("DOMContentLoaded", function(event) {
             oscillators: oscillators,
             gain: envelope
         };
+
+        doPolyphonyGain();
+    }
+
+    function playLFO(key) {
+        const now = audioCtx.currentTime;
+        const baseFreq = keyboardFrequencyMap[key];
+
+        const envelope = audioCtx.createGain();
+        envelope.gain.setValueAtTime(0.0001, now);
+        envelope.gain.exponentialRampToValueAtTime(1, now + 0.02);
+        envelope.connect(globalGain);
+
+        // hardcoded partials
+        const partials = [
+            { ratio: 1, amp: 0.5 },
+            { ratio: 2, amp: 0.2 },
+            { ratio: 3, amp: 0.1 }
+        ];
+
+        const oscillators = [];
+
+        partials.forEach(partial => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.frequency.setValueAtTime(baseFreq * partial.ratio, now);
+            osc.type = waveformSelect.value;
+            gain.gain.setValueAtTime(partial.amp, now);
+            
+            osc.connect(gain);
+            gain.connect(envelope);
+            osc.start();
+            
+            oscillators.push(osc);
+        });
+
+        activeOscillators[key] = {
+            oscillators: oscillators,
+            gain: envelope
+        };
+
+        // LFO
+
+        const lfo = audioCtx.createOscillator();
+        lfo.frequency.value = 6;
+        lfoGain = audioCtx.createGain();
+        lfoGain.gain.value = 10;
+        lfo.connect(lfoGain).connect(oscillators[1].frequency);
+        lfo.start();
 
         doPolyphonyGain();
     }
