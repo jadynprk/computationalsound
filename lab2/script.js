@@ -56,19 +56,21 @@ document.addEventListener("DOMContentLoaded", function(event) {
 
     function keyUp(event) {
         const key = (event.detail || event.which).toString();
+
         if (keyboardFrequencyMap[key] && activeOscillators[key]) {
-            const { osc, gain } = activeOscillators[key];
+            const { oscillators, gain } = activeOscillators[key];
 
             // Release phase
             const now = audioCtx.currentTime;
             const releaseTime = 0.3;
+            
             // smooth fade out
             gain.gain.cancelScheduledValues(now);
             gain.gain.setValueAtTime(gain.gain.value, now);
             gain.gain.exponentialRampToValueAtTime(0.001, now + releaseTime);
 
             // stop oscillator after release time
-            osc.stop(now + releaseTime);
+            oscillators.forEach(osc => osc.stop(now + releaseTime));
 
             delete activeOscillators[key];
             doPolyphonyGain(); // adjust gain for remaining notes
@@ -124,7 +126,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
 
         activeOscillators[key] = {
             oscillators: oscillators,
-            envelope: envelope
+            gain: envelope
         };
 
         doPolyphonyGain();
