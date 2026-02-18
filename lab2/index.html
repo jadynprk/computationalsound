@@ -25,6 +25,36 @@
     <option value="fm">FM</option>
   </select>
 
+  <h3>Global ADSR</h3>
+  <label>Attack</label>
+  <input type="range" id="attack" min="0.001" max="0.8" step="0.001" value="0.02">
+
+  <label>Decay</label>
+  <input type="range" id="decay" min="0.001" max="2" step="0.001" value="0.3">
+
+  <label>Sustain</label>
+  <input type="range" id="sustain" min="0" max="1" step="0.01" value="0.4">
+
+  <label>Release</label>
+  <input type="range" id="release" min="0.001" max="3" step="0.01" value="0.4">
+
+  <p>hold notes down to hear changes better</p>
+  <button id="presetPiano">reset ADSR</button>
+
+  <h3>AM</h3>
+  <label>AM Frequency (Hz)</label>
+  <input type="range" id="amFrequency" min="0.1" max="30" step="0.1" value="5">
+
+  <label>AM Depth</label>
+  <input type="range" id="amDepth" min="0" max="0.95" step="0.01" value="0.5">
+
+  <h3>FM</h3>
+  <label>FM Frequency (Hz)</label>
+  <input type="range" id="fmFrequency" min="0" max="1000" step="1" value="200">
+
+  <label>FM Index</label>
+  <input type="range" id="fmIndex" min="0" max="5" step="0.01" value="1">
+
   <canvas id="canvas" width="1000" height="500"></canvas>
 
   <style>

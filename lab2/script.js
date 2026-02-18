@@ -45,24 +45,36 @@ document.addEventListener("DOMContentLoaded", function(event) {
     }
 
     const params = {
-        // Global
+        // Global ADSR
         attack: 0.02,
-        decay: 0.1,
-        sustain: 0.7,
-        release: 0.3,
-        masterVolume: 0.8,
-
-        // Additive
-        partials: 5,
+        decay: 0.3,
+        sustain: 0.4,
+        release: 0.4,
 
         // AM
-        amFrequency: 100,
-        amDepth: 0.8,
+        amFrequency: 5,
+        amDepth: 0.5,
 
         // FM
-        fmFrequency: 100,
-        fmIndex: 200
+        fmFrequency: 200,
+        fmIndex: 1
     };
+
+    function setADSR(a, d, s, r) {
+        params.attack = a;
+        params.decay = d;
+        params.sustain = s;
+        params.release = r;
+
+        document.getElementById("attack").value = a;
+        document.getElementById("decay").value = d;
+        document.getElementById("sustain").value = s;
+        document.getElementById("release").value = r;
+    }
+
+    document.getElementById("presetPiano").addEventListener("click", () => {
+        setADSR(0.01, 0.2, 0.3, 0.3);
+    });
 
     function bindSlider(id, paramName) {
         const slider = document.getElementById(id);
@@ -75,6 +87,9 @@ document.addEventListener("DOMContentLoaded", function(event) {
     bindSlider("decay", "decay");
     bindSlider("sustain", "sustain");
     bindSlider("release", "release");
+
+    bindSlider("amFrequency", "amFrequency");
+    bindSlider("amDepth", "amDepth");
 
     bindSlider("fmFrequency", "fmFrequency");
     bindSlider("fmIndex", "fmIndex");
@@ -230,11 +245,19 @@ document.addEventListener("DOMContentLoaded", function(event) {
         // LFO
 
         const lfo = audioCtx.createOscillator();
-        lfo.frequency.value = 6;
-        lfoGain = audioCtx.createGain();
-        lfoGain.gain.value = 10;
-        lfo.connect(lfoGain).connect(oscillators[1].frequency);
+        lfo.frequency.setValueAtTime(6, now);
+
+        const lfoGain = audioCtx.createGain();
+        lfoGain.gain.setValueAtTime(5, now);
+
+        oscillators.forEach(osc => {
+            lfoGain.connect(osc.frequency);
+        });
+
+        lfo.connect(lfoGain);
         lfo.start();
+
+        oscillators.push(lfo);
 
         doPolyphonyGain();
     }
@@ -249,25 +272,32 @@ document.addEventListener("DOMContentLoaded", function(event) {
         carrier.frequency.setValueAtTime(baseFreq, now);
         carrier.type = waveformSelect.value;
 
+        const amGain = audioCtx.createGain();
+        amGain.gain.setValueAtTime(1, now);
+
         const modulator = audioCtx.createOscillator();
-        modulator.frequency.setValueAtTime(100, now);
+        modulator.frequency.setValueAtTime(params.amFrequency, now);
         modulator.type = "sine";
 
+        const depthValue = Math.min(params.amDepth, 0.95);
         const depth = audioCtx.createGain();
-        depth.gain.setValueAtTime(0.8, now);
+        depth.gain.setValueAtTime(depthValue, now);
 
-        const modulated = audioCtx.createGain();
-        modulated.gain.setValueAtTime(1 - depth.gain.value, now);
+        const offset = audioCtx.createConstantSource();
+        offset.offset.setValueAtTime(1 - depthValue, now);
 
-        modulator.connect(depth).connect(modulated.gain);
-        carrier.connect(modulated);
-        modulated.connect(envelope);
-        
+        modulator.connect(depth);
+        depth.connect(amGain.gain);
+        offset.connect(amGain.gain);
+        carrier.connect(amGain);
+        amGain.connect(envelope);
+
         carrier.start();
         modulator.start();
+        offset.start();
 
         activeOscillators[key] = {
-            oscillators: [carrier, modulator],
+            oscillators: [carrier, modulator, offset],
             gain: envelope
         };
 
@@ -289,7 +319,10 @@ document.addEventListener("DOMContentLoaded", function(event) {
         modulator.type = "sine";
 
         const modulationIndex = audioCtx.createGain();
-        modulationIndex.gain.setValueAtTime(params.fmIndex, now); 
+        modulationIndex.gain.setValueAtTime(
+            baseFreq * params.fmIndex,
+            now
+        );
 
         modulator.connect(modulationIndex);
         modulationIndex.connect(carrier.frequency);
@@ -306,20 +339,17 @@ document.addEventListener("DOMContentLoaded", function(event) {
         doPolyphonyGain();
     }
 
-
-
     function doPolyphonyGain() {
         const count = Object.keys(activeOscillators).length;
-        if (count == 0) return;
+        if (count === 0) return;
 
         const targetGain = MAX_MASTER_GAIN / count;
 
-        for (const key in activeOscillators) {
-            const gainNode = activeOscillators[key].gain;
-            gainNode.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.01);
-        }
-
-
+        globalGain.gain.setTargetAtTime(
+            targetGain,
+            audioCtx.currentTime,
+            0.01
+        );
     }
 
     function spawnBall(key) {
