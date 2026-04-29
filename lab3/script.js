@@ -6,19 +6,10 @@ let brookNoise;
 // ── show/hide video based on selection ──
 function updateVideoVisibility() {
   const selected = document.getElementById("soundSelect").value;
-  document.getElementById("birdVideoWrapper").style.display  = selected === "birds" ? "block" : "none";
-  document.getElementById("brookVideoWrapper").style.display = selected === "brook" ? "block" : "none";
 }
 
 // initialise on load
 updateVideoVisibility();
-
-// ========================================
-// ========================================
-// ========================================
-// ========================================
-// ========================================
-// ========================================
 
 // ── Keep a reference set so nodes aren't GC'd before they finish playing ──
 const activeNodes = new Set();
@@ -246,14 +237,6 @@ function stopPopcorn() {
   stopSmallCrackles();
   stopBigPops();
 }
-
-// ========================================
-// ========================================
-// ========================================
-// ========================================
-// ========================================
-// ========================================
-
 
 // ── brook ──
 function startBrook() {
