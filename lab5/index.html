@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Lab 5</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+</head>
+<body>
+
+<p>lab 5 - cellular automata composition</p>
+
+<div>
+  <button id="btnPlay">Play</button>
+  <button id="btnPause" disabled>Pause</button>
+  <button id="btnReset">Reset</button>
+  &nbsp;&nbsp;
+  BPM: <input type="range" id="bpmSlider" min="40" max="600" value="300">
+  <span id="bpmDisplay">300</span>
+  &nbsp;&nbsp;
+  Density: <input type="range" id="densitySlider" min="10" max="60" value="30">
+  <span id="densityDisplay">30</span>%
+  &nbsp;&nbsp;
+  <label><input type="checkbox" id="chkLoop" checked> Loop (restart when stable)</label>
+</div>
+
+<br>
+
+<canvas id="caCanvas" width="640" height="640"></canvas>
+
+<br>
+
+<div>
+  <strong>Generation:</strong> <span id="genDisplay">0</span>
+  &nbsp;&nbsp;
+  <strong>Live cells:</strong> <span id="cellDisplay">0</span>
+  &nbsp;&nbsp;
+  <strong>Births this gen:</strong> <span id="birthDisplay">0</span>
+</div>
+
+<h1>。·☆. ݁₊ ⊹ blog post . ݁ ⟡ ݁ . ⊹ ₊ ݁.</h1>
+<h2>what's this?</h2>
+<p>
+  this is an implementation of a 2D <a href="https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life" target="_blank">Game of Life cellular automaton</a> mapped to music. 
+  each column represents a pitch class like "A", and each row represents an octave. when a cell is born, its corresponding note is triggered. 
+  a cell is born if it has exactly 2 live neighbors, survives if it has 2 or 3 neighbors, and dies otherwise.
+</p>
+
+<h2>design</h2>
+<h3>pitch mapping</h3>
+<p>
+  the columns of the grid cycle through the C pentatonic scale (C, D, E, G, A).
+  i chose a pentatonic scale because they're generally more forgiving and playing lots of notes doesn't clash badly.
+  the rows map to octaves, so the top of the grid is higher-pitched and the bottom is lower.
+  as a result, each cell represents a specific note.
+</p>
+
+<h3>triggering notes</h3>
+<p>
+  notes are triggered when a cell is born. at first, i tried to play every live cell in a generation, but that sounded pretty bad and wasn't very good at showing the evolution of the grid.
+  to do this, we compare the current grid to the next one before advancing.
+  when the grid dies, we automatically reseed to keep going. you can turn this off by by unchecking the "Loop" box.
+</p>
+
+<h3>visuals</h3>
+<p>
+  newborn cells are white. after that, they fade from light pink to dark red as they age.
+</p>
+
+<h3>audio</h3>
+<p>
+  the audio took a good amount of fiddling with to get the right sound. i turned the volume down overall so that many simultaneous births wouldn't clip.
+  i also messed with the adsr levels, especially so it would sound good at high bpms.
+  the biggest lesson i learned with this project was there are a surprising amount of tradeoffs to calculate when working with audio, like when to cap polyphony.
+</p>
+
+<p>thanks for reading!</p>
+
+
+
+
+<script>
+// ---- CONFIG ----
+const COLS = 32;
+const ROWS = 32;
+const CELL_SIZE = 20; // canvas is 640x640
+
+// ---- PITCH MAPPING ----
+// C pentatonic pitch classes: C D E G A
+const PITCH_CLASSES = ['C', 'D', 'E', 'G', 'A'];
+// COLS = 32, so columns map to pitch classes by: col % 5
+// ROWS = 32, spread across 4 octaves (2 through 5), 8 rows per octave
+const OCT_MIN = 2;
+const OCT_MAX = 5;
+
+function cellToNote(row, col) {
+  const pitchClass = PITCH_CLASSES[col % PITCH_CLASSES.length];
+  // row 0 = highest octave, row ROWS-1 = lowest octave
+  const octave = OCT_MAX - Math.floor(row / ROWS * (OCT_MAX - OCT_MIN + 1));
+  return pitchClass + octave;
+}
+
+// Velocity is fixed — births are all equally noteworthy
+const BIRTH_VELOCITY = 0.7;
+
+// ---- CA STATE ----
+let grid = [];
+let prevGrid = null; // for birth detection
+let ageGrid = []; // NEW: tracks how many generations each cell has been alive
+let generation = 0;
+let running = false;
+let scheduleId = null;
+
+function randomGrid(density) {
+  const g = [];
+  for (let r = 0; r < ROWS; r++) {
+    g.push([]);
+    for (let c = 0; c < COLS; c++) {
+      g[r].push(Math.random() * 100 < density ? 1 : 0);
+    }
+  }
+  return g;
+}
+
+// NEW: initialise age grid to all zeros
+function zeroAgeGrid() {
+  const a = [];
+  for (let r = 0; r < ROWS; r++) {
+    a.push(new Array(COLS).fill(0));
+  }
+  return a;
+}
+
+// NEW: maps age (0 = newborn) to a color along a light pink -> deep red ramp
+const AGE_MAX = 20;
+function ageToColor(age) {
+  if (age === 0) return '#ffffff'; // newborn = bright white flash
+
+  const t = Math.min(age, AGE_MAX) / AGE_MAX; // 0.0 -> 1.0
+  const r = Math.round(240 - t * 90);  // 240 -> 150
+  const g = Math.round(180 - t * 150); // 180 -> 30
+  const b = Math.round(190 - t * 170); // 190 -> 20
+  return `rgb(${r},${g},${b})`;
+}
+
+function countNeighbors(g, r, c) {
+  let count = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = (r + dr + ROWS) % ROWS;
+      const nc = (c + dc + COLS) % COLS;
+      count += g[nr][nc];
+    }
+  }
+  return count;
+}
+
+function stepGoL(g) {
+  const next = [];
+  for (let r = 0; r < ROWS; r++) {
+    next.push([]);
+    for (let c = 0; c < COLS; c++) {
+      const n = countNeighbors(g, r, c);
+      const alive = g[r][c];
+      if (alive && (n === 2 || n === 3)) next[r].push(1);
+      else if (!alive && n === 2) next[r].push(1);
+      else next[r].push(0);
+    }
+  }
+  return next;
+}
+
+function countLive(g) {
+  let count = 0;
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      count += g[r][c];
+  return count;
+}
+
+function gridsEqual(a, b) {
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (a[r][c] !== b[r][c]) return false;
+  return true;
+}
+
+// ---- AUDIO ----
+let synth = null;
+
+function initAudio() {
+  if (!synth) {
+    synth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.02, decay: 0.1, sustain: 0.2, release: 0.2 }
+    }).toDestination();
+    synth.volume.value = -18;
+    synth.maxPolyphony = 16;
+  }
+}
+
+// ---- CANVAS DRAWING ----
+const canvas = document.getElementById('caCanvas');
+const ctx = canvas.getContext('2d');
+
+function drawGrid(g, ages) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * CELL_SIZE;
+      const y = r * CELL_SIZE;
+      const alive = g[r][c];
+
+      if (alive) {
+        ctx.fillStyle = ageToColor(ages[r][c]); // use age to determine color
+      } else {
+        ctx.fillStyle = '#000000';
+      }
+      ctx.fillRect(x+1, y+1, CELL_SIZE-2, CELL_SIZE-2);
+
+      ctx.strokeStyle = 'darkred';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+    }
+  }
+}
+
+// ---- MAIN TICK ----
+function tick() {
+  if (!running) return;
+
+  const bpm = parseInt(document.getElementById('bpmSlider').value);
+  const intervalMs = (60 / bpm) * 1000;
+
+  // 1. Compute next generation
+  const next = stepGoL(grid);
+
+  // 2. Find births (0 -> 1) and update age grid
+  const births = [];
+  const nextAge = zeroAgeGrid(); // NEW: build next age grid each tick
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === 0 && next[r][c] === 1) {
+        births.push({ note: cellToNote(r, c), vel: BIRTH_VELOCITY });
+        nextAge[r][c] = 0; // NEW: born this tick, age 0
+      } else if (next[r][c] === 1) {
+        nextAge[r][c] = ageGrid[r][c] + 1; // NEW: survived, increment age
+      }
+      // dead cells stay 0 (already initialised that way)
+    }
+  }
+
+  // 3. Trigger notes for births
+  if (births.length > 0 && synth) {
+    const now = Tone.now();
+    const duration = (intervalMs / 1000) * 0.8;
+    for (const b of births) {
+      synth.triggerAttackRelease(b.note, duration, now, b.vel);
+    }
+  }
+
+  // 4. Draw using age grid
+  drawGrid(next, nextAge);
+
+  // 5. Update display
+  document.getElementById('genDisplay').textContent = generation;
+  document.getElementById('cellDisplay').textContent = countLive(next);
+  document.getElementById('birthDisplay').textContent = births.length;
+
+  // 6. Check loop condition before advancing
+  const loop = document.getElementById('chkLoop').checked;
+  if (loop && (countLive(next) === 0 || gridsEqual(grid, next))) {
+    const density = parseInt(document.getElementById('densitySlider').value);
+    prevGrid = grid;
+    grid = randomGrid(density);
+    ageGrid = zeroAgeGrid(); // NEW: reset ages on reseed
+  } else {
+    prevGrid = grid;
+    grid = next;
+    ageGrid = nextAge; // NEW: advance age grid
+  }
+  generation++;
+
+  scheduleId = setTimeout(tick, intervalMs);
+}
+
+// ---- CONTROLS ----
+document.getElementById('btnPlay').addEventListener('click', async () => {
+  await Tone.start(); // resume AudioContext (browser requires user gesture)
+  initAudio();
+  running = true;
+  document.getElementById('btnPlay').disabled = true;
+  document.getElementById('btnPause').disabled = false;
+  tick();
+});
+
+document.getElementById('btnPause').addEventListener('click', () => {
+  running = false;
+  clearTimeout(scheduleId);
+  document.getElementById('btnPlay').disabled = false;
+  document.getElementById('btnPause').disabled = true;
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  running = false;
+  clearTimeout(scheduleId);
+  document.getElementById('btnPlay').disabled = false;
+  document.getElementById('btnPause').disabled = true;
+  generation = 0;
+  prevGrid = null;
+  const density = parseInt(document.getElementById('densitySlider').value);
+  grid = randomGrid(density);
+  ageGrid = zeroAgeGrid();
+  drawGrid(grid, ageGrid);
+  document.getElementById('genDisplay').textContent = 0;
+  document.getElementById('cellDisplay').textContent = countLive(grid);
+  document.getElementById('birthDisplay').textContent = 0;
+});
+
+document.getElementById('bpmSlider').addEventListener('input', () => {
+  document.getElementById('bpmDisplay').textContent =
+    document.getElementById('bpmSlider').value;
+});
+
+document.getElementById('densitySlider').addEventListener('input', () => {
+  document.getElementById('densityDisplay').textContent =
+    document.getElementById('densitySlider').value;
+});
+
+// ---- INIT ----
+const initDensity = parseInt(document.getElementById('densitySlider').value);
+grid = randomGrid(initDensity);
+ageGrid = zeroAgeGrid();
+drawGrid(grid, ageGrid);
+</script>
+
+</body>
+</html>
